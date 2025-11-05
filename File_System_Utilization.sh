@@ -5,6 +5,22 @@ echo "Checking disk usage..."
 df -h | awk 'NR>1'
 
 echo "Checking for filesystems above $THRESHOLD%..."
+echo "Checking /var consuming more..."
+    USAGE=$(df -h /var | awk 'NR==2 {gsub("%",""); print $5}')
+    if [ "$USAGE" -ge "$THRESHOLD" ]; then
+            echo "/var is using ${USAGE}%, which is above ${THRESHOLD}%."
+            echo "Cleaning up YUM repository cache files..."
+
+            # Refresh subscription and clean repos
+            subscription-manager repos --list
+            subscription-manager repos --disable "*"
+            subscription-manager repos --enable rhel-7-server-rpms --enable rhel-7-server-optional-rpms
+            subscription-manager refresh
+
+            yum clean all
+    else
+            echo "/var usage (${USAGE}%) is below threshold (${THRESHOLD}%). No cleanup needed."
+    fi
 df -h | awk 'NR>1 && $6 != "/var" {print $5, $6}' | sed 's/%//' | while read -r usage mount
 do
     usage=${usage%\%}  # Remove %
@@ -21,28 +37,14 @@ do
         echo "$ITEM ($SIZE) owned by $OWNER"
         for user in "${APP_USERS[@]}"; do
                 if [[ "$OWNER" == "$user" ]]; then
-                    echo "Action needed: $ITEM owned by $OWNER"
+                    echo "Action needed: $ITEM owned by $OWNER,Send mail to NOC team"
                 fi
         done
 done
-        echo "Checking /var consuming more..."
-        USAGE=$(df -h /var | awk 'NR==2 {gsub("%",""); print $5}')
-        if [ "$USAGE" -ge "$THRESHOLD" ]; then
-                echo "/var is using ${USAGE}%, which is above ${THRESHOLD}%."
-                echo "Cleaning up YUM repository cache files..."
-
-                # Refresh subscription and clean repos
-                subscription-manager repos --list
-                subscription-manager repos --disable "*"
-                subscription-manager repos --enable rhel-7-server-rpms --enable rhel-7-server-optional-rpms
-                subscription-manager refresh
-
-                yum clean all
-        else
-                echo "/var usage (${USAGE}%) is below threshold (${THRESHOLD}%). No cleanup needed."
-        fi
-        # checking for deleted file 
-        echo "Checking for deleted files held by processes..."
+        
+    fi
+done
+echo "Checking for deleted files held by processes..."
         deleted=$(lsof | grep deleted)
         if [ -n "$deleted" ]; then
             echo "Found deleted files still held by processes."
@@ -65,5 +67,3 @@ done
         else
             echo " Usage is now under threshold."
         fi
-    fi
-done
